@@ -1,0 +1,11 @@
+node_modules
+.env
+.DS_Store
+auth_info
+auth_info_baileys
+logs
+.pm2
+npm-debug.log
+.idea
+.vscode
+*.zip

@@ -183,8 +183,8 @@ async function processBackgroundTasks(groupId, userId, text, msg, sock) {
 
         if (economyResult.payout) {
             await sock.sendMessage(groupId, {
-                text: `💰 *PAGO REALIZADO*\nUsuario: @${user.split('@')[0]}\nMonto: $${economyResult.amount.toFixed(2)} 💵\nModalidad: Efectivo\n\n💡 Usa .deposit ${economyResult.amount.toFixed(2)} para guardarlo.`,
-                mentions: [user]
+                text: `💰 *PAGO REALIZADO*\nUsuario: @${userId.split('@')[0]}\nMonto: $${economyResult.amount.toFixed(2)} 💵\nModalidad: Efectivo\n\n💡 Usa .deposit ${economyResult.amount.toFixed(2)} para guardarlo.`,
+                mentions: [userId]
             }, { quoted: msg });
             member.wallet = (member.wallet || 0) + economyResult.amount;
             member.pending = 0;

@@ -21,6 +21,7 @@ async function startBot() {
     logger.info(`Using WA v${version.join('.')} (Latest: ${isLatest})`);
 
     let keepAliveInterval;
+    let tempBanInterval;
 
     const sock = makeWASocket({
         ...BAILEYS_CONFIG,
@@ -31,7 +32,7 @@ async function startBot() {
             return await getGroupMetadataCached(sock, jid);
         },
         getMessage: async (key) => {
-            return { conversation: '' };
+            return undefined;
         }
     });
 
@@ -49,6 +50,7 @@ async function startBot() {
 
         if (connection === 'close') {
             if (keepAliveInterval) clearInterval(keepAliveInterval);
+            if (tempBanInterval) clearInterval(tempBanInterval);
 
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
@@ -73,30 +75,33 @@ async function startBot() {
             }, 30000);
 
             // TEMP BAN CHECKER CRON JOB
-            setInterval(async () => {
+            tempBanInterval = setInterval(async () => {
                 const { getExpiredTempBans, removeTempBan } = require('../services/database');
 
                 try {
                     const expiredBans = await getExpiredTempBans();
+
+                    if (expiredBans.length > 0) {
+                        logger.info(`Checking expired bans: found ${expiredBans.length}`);
+                    }
 
                     for (const ban of expiredBans) {
                         logger.info(`Processing expired ban for ${ban.userId} in ${ban.groupId}`);
 
                         try {
                             // Try to add user directly
-                            const response = await sock.groupParticipantsUpdate(ban.groupId, [ban.userId], 'add');
-
-                            // Check response - sometimes 'add' returns 403 status implicitly in the object structure depending on version
-                            // But usually it throws or returns status. Let's assume consistent behavior or catch error.
+                            await sock.groupParticipantsUpdate(ban.groupId, [ban.userId], 'add');
 
                             // Send welcome back message
                             await sock.sendMessage(ban.groupId, {
-                                text: `🕊️ *REGRESO AUTOMÁTICO*\n\nBienvenido de vuelta @${ban.userId.split('@')[0]}.\nTu tiempo de castigo ha terminado. Pórtate bien esta vez.`,
+                                text: `🤡 *¿OTRA VEZ TÚ?*\n\nMira quién volvió...*\n\n 🕊️ Bienvenido de vuelta @${ban.userId.split('@')[0]}.\nTu tiempo de castigo ha terminado. Pórtate bien esta vez.`,
                                 mentions: [ban.userId]
                             });
 
+                            logger.info(`Successfully auto-added ${ban.userId} to ${ban.groupId}`);
+
                         } catch (addError) {
-                            logger.warn(`Failed to auto-add ${ban.userId} (Privacy?): ${addError.message}`);
+                            logger.warn(`Failed to auto-add ${ban.userId} (Privacy/Perms): ${addError.message}`);
 
                             try {
                                 // If add failed (privacy), send invite link via DM

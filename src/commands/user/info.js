@@ -81,6 +81,7 @@ module.exports = {
 💰 *ECONOMÍA (Este Grupo)*
 💵 Efectivo: $${(member.wallet || 0).toFixed(2)}
 🏦 Banco: $${(member.bank || 0).toFixed(2)}
+⏳ Pendiente: $${(member.pending || 0).toFixed(2)}
 💎 Patrimonio: $${netWorth.toFixed(2)}
 ${debtText}
 ━━━━━━━━━━━━━━━━━━━━━━

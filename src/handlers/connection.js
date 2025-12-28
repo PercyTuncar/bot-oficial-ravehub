@@ -104,13 +104,24 @@ async function startBot() {
                             logger.warn(`Failed to auto-add ${ban.userId} (Privacy/Perms): ${addError.message}`);
 
                             try {
-                                // If add failed (privacy), send invite link via DM
+                                // If add failed (privacy or pushed out), send OFFICIAL INVITE V4
+                                // This bypasses the "Can't join via link" restriction for kicked users
                                 const code = await sock.groupInviteCode(ban.groupId);
-                                const inviteLink = `https://chat.whatsapp.com/${code}`;
+                                const groupMetadata = await getGroupMetadataCached(sock, ban.groupId); // Use cached metadata helper
 
+                                // Send V4 Invite Card
                                 await sock.sendMessage(ban.userId, {
-                                    text: `🔓 *TU CASTIGO HA TERMINADO*\n\nHola, ya puedes volver al grupo.\n\n⚠️ No pude agregarte automáticamente debido a tu configuración de privacidad.\n\n🔗 Únete aquí: ${inviteLink}`
+                                    groupInvite: {
+                                        groupJid: ban.groupId,
+                                        groupName: groupMetadata?.subject || 'Grupo sin nombre',
+                                        inviteCode: code,
+                                        inviteExpiration: Date.now() + 86400000, // 24 hours
+                                        caption: `🔓 *TU CASTIGO HA TERMINADO*\n\nHola, no pude agregarte automáticamente (Privacidad).\nUsa esta invitación especial para volver.`
+                                    }
                                 });
+
+                                logger.info(`Sent V4 Invite to ${ban.userId}`);
+
                             } catch (dmError) {
                                 logger.error(`Failed to send invite DM to ${ban.userId}: ${dmError.message}`);
                             }

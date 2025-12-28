@@ -46,7 +46,7 @@ module.exports = {
 
             const sentMsg = await sock.sendMessage(targetJid, {
                 text: `🪙 *CARA O CRUZ*\n━━━━━━━━━━━━━━━━━━━━━━\nApostaste: $${bet.toFixed(2)} a ${userChoice}\nLanzando moneda... 🤜🪙`
-            });
+            }, { quoted: msg });
 
             await new Promise(r => setTimeout(r, 1000));
             await sock.sendMessage(targetJid, {

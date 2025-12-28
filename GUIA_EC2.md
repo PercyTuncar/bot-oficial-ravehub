@@ -25,7 +25,7 @@ Antes de tocar el servidor, asegúrate de que tu código esté en GitHub.
     git add .
     git commit -m "Primer commit: Bot estable"
     git branch -M main
-    git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
+    git remote add origin https://github.com/PercyTuncar/bot-oficial-ravehub.git
     git push -u origin main
     ```
 
@@ -101,12 +101,12 @@ Volvemos al **servidor EC2**:
 
 1.  Clona el repo (Usa la opción **SSH** en el botón Code de GitHub):
     ```bash
-    # Ejemplo: git clone git@github.com:PercyTuncar/bot-oficial-ravehub.git
-    git clone git@github.com:TU_USUARIO/TU_REPO.git
+    # Clona el repositorio oficial
+    git clone git@github.com:PercyTuncar/bot-oficial-ravehub.git
     ```
 2.  Entra a la carpeta:
     ```bash
-    cd nombre-de-tu-repo
+    cd bot-oficial-ravehub
     ```
 3.  Instala dependencias:
     ```bash
@@ -124,12 +124,19 @@ Tienes archivos que no se suben a GitHub (`.env` y credenciales). Créalos manua
     *   Guardar: `Ctrl+O` -> `Enter` -> `Ctrl+X`.
 
 2.  **Subir credenciales de Firebase**:
-    *   Como es difícil pegar un archivo JSON grande, crea el archivo:
+    *   Como es difícil pegar un archivo JSON grande en la terminal, te recomiendo crearlo y pegar el contenido.
+    
+    A. **Crear archivo de credenciales de Firebase**:
     ```bash
     nano src/config/serviceAccountKey.json
     ```
-    *   Abre tu `serviceAccountKey.json` local, copia todo el texto y pégalo ahí.
-    *   Guardar y salir.
+    *   Abre tu archivo `serviceAccountKey.json` local (en tu computadora).
+    *   Copia todo el contenido (asegúrate de copiarlo completo).
+    *   Pégalo en la terminal (Click derecho > Pegar).
+    *   Guardar: `Ctrl+O` -> `Enter` -> `Ctrl+X`.
+    
+    B. **Verificar variables**:
+    Asegúrate de que tu `.env` tenga las variables correctas (prefijo, owner, puerto, etc).
 
 ### Paso D: Iniciar el Bot
 Usaremos PM2 para mantenerlo vivo.

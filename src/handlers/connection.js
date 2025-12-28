@@ -4,6 +4,10 @@ const { setCachedGroup, invalidateGroup, getGroupMetadataCached } = require('../
 const logger = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
+const NodeCache = require('node-cache'); // Import node-cache
+
+// Cache for message retries to prevent loops
+const msgRetryCounterCache = new NodeCache();
 
 // Helper function to delete auth folder if needed
 function clearAuth() {
@@ -27,6 +31,7 @@ async function startBot() {
         ...BAILEYS_CONFIG,
         version,
         auth: state,
+        msgRetryCounterCache, // Enable retry cache
         // Cached group metadata for performance
         cachedGroupMetadata: async (jid) => {
             return await getGroupMetadataCached(sock, jid);

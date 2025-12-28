@@ -90,32 +90,55 @@ async function startBot() {
                         logger.info(`Checking expired bans: found ${expiredBans.length}`);
                     }
 
-                    for (const ban of expiredBans) {
-                        logger.info(`Processing expired ban for ${ban.userId} in ${ban.groupId}`);
-
+                    for (let ban of expiredBans) {
                         try {
+                            // --- LID FIX: Resolve to Phone JID if needed ---
+                            let targetJid = ban.userId;
+                            if (targetJid.endsWith('@lid')) {
+                                logger.info(`Attempting to resolve LID ${targetJid} to JID...`);
+                                const groupMetadata = await getGroupMetadataCached(sock, ban.groupId);
+                                if (groupMetadata) {
+                                    const participant = groupMetadata.participants.find(p => p.lid === targetJid);
+                                    if (participant && participant.id) {
+                                        targetJid = participant.id;
+                                        logger.info(`Resolved LID ${ban.userId} to ${targetJid}`);
+                                    }
+                                }
+                            }
+                            // -----------------------------------------------
+
+                            logger.info(`Processing expired ban for ${targetJid} in ${ban.groupId}`);
+
                             // Try to add user directly
-                            await sock.groupParticipantsUpdate(ban.groupId, [ban.userId], 'add');
+                            await sock.groupParticipantsUpdate(ban.groupId, [targetJid], 'add');
 
                             // Send welcome back message
                             await sock.sendMessage(ban.groupId, {
-                                text: `🤡 *¿OTRA VEZ TÚ?*\n\nMira quién volvió...*\n\n 🕊️ Bienvenido de vuelta @${ban.userId.split('@')[0]}.\nTu tiempo de castigo ha terminado. Pórtate bien esta vez.`,
-                                mentions: [ban.userId]
+                                text: `🤡 *¿OTRA VEZ TÚ?*\n\nMira quién volvió...*\n\n 🕊️ Bienvenido de vuelta @${targetJid.split('@')[0]}.\nTu tiempo de castigo ha terminado. Pórtate bien esta vez.`,
+                                mentions: [targetJid]
                             });
 
-                            logger.info(`Successfully auto-added ${ban.userId} to ${ban.groupId}`);
+                            logger.info(`Successfully auto-added ${targetJid} to ${ban.groupId}`);
 
                         } catch (addError) {
-                            logger.warn(`Failed to auto-add ${ban.userId} (Privacy/Perms): ${addError.message}`);
+                            logger.warn(`Failed to auto-add (Privacy/Perms): ${addError.message}`);
 
                             try {
                                 // If add failed (privacy or pushed out), send OFFICIAL INVITE V4
-                                // This bypasses the "Can't join via link" restriction for kicked users
                                 const code = await sock.groupInviteCode(ban.groupId);
                                 const groupMetadata = await getGroupMetadataCached(sock, ban.groupId); // Use cached metadata helper
 
+                                // Resolve target again for DM if needed (should be same targetJid)
+                                let dmTarget = ban.userId;
+                                if (dmTarget.endsWith('@lid')) {
+                                    const participant = groupMetadata?.participants?.find(p => p.lid === dmTarget);
+                                    if (participant) dmTarget = participant.id;
+                                }
+
+                                logger.info(`Sending V4 Invite to ${dmTarget}...`);
+
                                 // Send V4 Invite Card
-                                await sock.sendMessage(ban.userId, {
+                                await sock.sendMessage(dmTarget, {
                                     groupInvite: {
                                         groupJid: ban.groupId,
                                         groupName: groupMetadata?.subject || 'Grupo sin nombre',
@@ -125,16 +148,17 @@ async function startBot() {
                                     }
                                 });
 
-                                logger.info(`Sent V4 Invite to ${ban.userId}`);
+                                logger.info(`Sent V4 Invite to ${dmTarget}`);
 
                             } catch (dmError) {
-                                logger.error(`Failed to send invite DM to ${ban.userId}: ${dmError.message}`);
+                                logger.error(`Failed to send invite DM: ${dmError.message}`);
                             }
-                        }
-
-                        // Always remove the temp ban record after processing attempt
-                        if (ban.id) {
-                            await removeTempBan(ban.id);
+                        } finally {
+                            // Always remove the temp ban record after processing attempt
+                            if (ban.id) {
+                                await removeTempBan(ban.id);
+                                logger.info(`Removed temp ban record ${ban.id}`);
+                            }
                         }
                     }
                 } catch (err) {

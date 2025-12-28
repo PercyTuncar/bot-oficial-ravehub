@@ -40,6 +40,15 @@ module.exports = {
                 return sock.sendMessage(targetJid, { text: '❌ Debes etiquetar a alguien.' }, { quoted: msg });
             }
 
+            // --- JID NORMALIZATION (Fix for Auto-Add) ---
+            // Try to find the canonical JID (phone number) in group metadata
+            // This fixes issues where 'participant' gives an LID which fails to add back
+            const participant = groupMetadata.participants.find(p => p.id === targetUserId || (p.lid && p.lid === targetUserId));
+            if (participant && participant.id.endsWith('@s.whatsapp.net')) {
+                targetUserId = participant.id;
+            }
+            // --------------------------------------------
+
             // Check if target is admin
             const targetParticipant = groupMetadata.participants.find(p => p.id === targetUserId);
             if (targetParticipant && (targetParticipant.admin === 'admin' || targetParticipant.admin === 'superadmin')) {

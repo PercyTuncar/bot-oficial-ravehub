@@ -6,7 +6,7 @@ const { normalizeJidForSend, createReactionKey, reactProcessing, reactSuccess, r
 module.exports = {
     name: 'rob',
     aliases: ['robar', 'steal'],
-    description: 'Intenta robar dinero a otro usuario (nivel 2+)',
+    description: 'Intenta robar dinero a otro usuario',
     requiredLevel: LEVELS.USER,
     async execute(sock, msg, args, { user: robberId, groupId, isGroup }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);
@@ -42,13 +42,7 @@ module.exports = {
                 return sock.sendMessage(targetJid, { text: '❌ No tienes perfil en este grupo.' }, { quoted: msg });
             }
 
-            // Check robber level (must be 2+)
-            const robberNetWorth = (robber.wallet || 0) + (robber.bank || 0);
-            const robberLevel = calculateLevel(robberNetWorth);
-            if (robberLevel.level < 2) {
-                await reactError(sock, targetJid, reactionKey);
-                return sock.sendMessage(targetJid, { text: '❌ Necesitas ser nivel 2 o superior para robar.\nSigue enviando mensajes para subir de nivel.' }, { quoted: msg });
-            }
+
 
             if (!victim) {
                 await reactError(sock, targetJid, reactionKey);

@@ -11,7 +11,7 @@ const BAILEYS_CONFIG = {
     browser: ['RaveHub Bot', 'Chrome', '1.0.0'],
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: 0,
-    keepAliveIntervalMs: 10000,
+    keepAliveIntervalMs: 30000,
     emitOwnEvents: true,
     markOnlineOnConnect: true,
     retryRequestDelayMs: 250, // Fast retry

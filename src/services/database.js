@@ -184,12 +184,19 @@ async function getOrCreateMember(groupId, userId, userData = {}) {
 
 async function getGroup(groupId) {
     try {
-        const doc = await db.collection(GROUPS_COLLECTION).doc(groupId).get();
+        // Add 5s timeout to prevent hanging indefinitely
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Firestore getGroup timeout')), 5000)
+        );
+
+        const docPromise = db.collection(GROUPS_COLLECTION).doc(groupId).get();
+        const doc = await Promise.race([docPromise, timeoutPromise]);
+
         if (!doc.exists) return null;
         return doc.data();
     } catch (error) {
         logger.error(`Error getting group ${groupId}:`, error);
-        return null;
+        return null; // Return null on timeout/error so processing can continue (graceful degradation)
     }
 }
 

@@ -37,27 +37,39 @@ function createReactionKey(msgKey) {
  * Sends a processing reaction (⏳)
  */
 async function reactProcessing(sock, targetJid, reactionKey) {
-    await sock.sendMessage(targetJid, {
-        react: { text: '⏳', key: reactionKey }
-    });
+    try {
+        await sock.sendMessage(targetJid, {
+            react: { text: '⏳', key: reactionKey }
+        });
+    } catch (e) {
+        console.error('Failed to react processing:', e.message);
+    }
 }
 
 /**
  * Sends a success reaction (✅)
  */
 async function reactSuccess(sock, targetJid, reactionKey) {
-    await sock.sendMessage(targetJid, {
-        react: { text: '✅', key: reactionKey }
-    });
+    try {
+        await sock.sendMessage(targetJid, {
+            react: { text: '✅', key: reactionKey }
+        });
+    } catch (e) {
+        console.error('Failed to react success:', e.message);
+    }
 }
 
 /**
  * Sends an error reaction (❌)
  */
 async function reactError(sock, targetJid, reactionKey) {
-    await sock.sendMessage(targetJid, {
-        react: { text: '❌', key: reactionKey }
-    }).catch(() => { });
+    try {
+        await sock.sendMessage(targetJid, {
+            react: { text: '❌', key: reactionKey }
+        });
+    } catch (e) {
+        // Silent catch for errors
+    }
 }
 
 module.exports = {

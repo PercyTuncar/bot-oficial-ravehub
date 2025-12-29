@@ -15,8 +15,8 @@ module.exports = {
     out_file: './logs/output.log',
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
     merge_logs: true,
-    min_uptime: '10s',
-    max_restarts: 10,
-    restart_delay: 4000
+    min_uptime: '30s',
+    max_restarts: 5,
+    restart_delay: 10000
   }]
 };

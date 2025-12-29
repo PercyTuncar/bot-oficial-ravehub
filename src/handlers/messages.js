@@ -30,9 +30,14 @@ async function handleIncomingMessage(sock, msg) {
     try {
         if (!msg.message) return;
 
+        // --- EXTENSIVE DEBUGGING ---
+        console.log('--- NEW MESSAGE RECEIVED ---');
+        console.log(JSON.stringify(msg, null, 2));
+
         // --- DEDUPLICATION CHECK ---
         const msgId = msg.key.id;
         if (processedMessages.has(msgId)) {
+            console.log(`[DEBUG] Duplicate message ignored: ${msgId}`);
             return;
         }
         processedMessages.add(msgId);
@@ -40,6 +45,7 @@ async function handleIncomingMessage(sock, msg) {
 
         // --- Extract text ---
         const text = extractMessageText(msg).trim();
+        console.log(`[DEBUG] Extracted text: "${text}" from ${msg.key.remoteJid}`);
 
         // --- Self-Message Handling ---
         if (msg.key.fromMe && !text.startsWith(PREFIX)) {
@@ -80,9 +86,25 @@ async function handleIncomingMessage(sock, msg) {
         }
 
         // --- ANTILINK CHECK ---
+        // currentGroup loaded check
+        if (isGroup) {
+            console.log(`[DEBUG] Processing group message for: ${remoteJid}`);
+        }
+
+        // --- ANTILINK CHECK ---
         const { checkAntilink } = require('../middleware/antilink');
+        console.log('[DEBUG] Checking Antilink...');
         if (isGroup && await checkAntilink(sock, msg, text, currentGroup, userId, isGroup)) {
+            console.log('[DEBUG] Message blocked by Antilink');
             return; // Message deleted due to antilink
+        }
+
+        // --- ANTIWORDS CHECK ---
+        const { checkAntiwords } = require('../middleware/antiwords');
+        console.log('[DEBUG] Checking Antiwords...');
+        if (isGroup && await checkAntiwords(sock, msg, text, currentGroup, userId, isGroup)) {
+            console.log('[DEBUG] Message blocked by Antiwords');
+            return; // Message deleted due to antiwords
         }
 
         // --- FAST PATH: Command check ---
@@ -133,6 +155,7 @@ async function handleIncomingMessage(sock, msg) {
         }
 
     } catch (error) {
+        console.error('[CRITICAL ERROR] Error handling message:', error);
         logger.error('Error handling message:', error);
     }
 }

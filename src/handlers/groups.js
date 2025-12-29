@@ -24,7 +24,10 @@ async function handleGroupUpdate(sock, update) {
                 const rawMessage = group.settings.welcome.message || '¡Bienvenido {user} a {group}! 🎉';
                 const imageUrl = detectImageUrl(rawMessage) || group.settings.welcome.imageUrl;
 
-                for (const participant of participants) {
+                for (const item of participants) {
+                    const participant = typeof item === 'string' ? item : item?.id;
+                    if (!participant) continue;
+
                     const userMention = `@${participant.split('@')[0]}`;
 
                     let text = replacePlaceholders(rawMessage, {
@@ -79,7 +82,10 @@ async function handleGroupUpdate(sock, update) {
             if (group.settings?.farewell?.enabled) {
                 const rawMessage = group.settings.farewell.message || 'Adiós {user}, te esperamos de vuelta 👋';
 
-                for (const participant of participants) {
+                for (const item of participants) {
+                    const participant = typeof item === 'string' ? item : item?.id;
+                    if (!participant) continue;
+
                     const userMention = `@${participant.split('@')[0]}`;
 
                     let text = replacePlaceholders(rawMessage, {

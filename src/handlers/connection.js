@@ -182,21 +182,30 @@ Usa .listgroups para ver grupos disponibles.
 
     // Handle group participant updates (welcome/farewell) and cache invalidation
     sock.ev.on('group-participants.update', async (update) => {
-        // Invalidate cache when participants change
-        invalidateGroup(update.id);
+        try {
+            console.log(`[EVENT] group-participants.update received for ${update.id}`);
+            // Invalidate cache when participants change
+            invalidateGroup(update.id);
 
-        const { handleGroupUpdate } = require('./groups');
-        if (handleGroupUpdate) await handleGroupUpdate(sock, update);
+            const { handleGroupUpdate } = require('./groups');
+            if (handleGroupUpdate) await handleGroupUpdate(sock, update);
+        } catch (error) {
+            logger.error('Error in group-participants.update handler:', error);
+        }
     });
 
     // Handle group metadata updates (name changes, settings, etc.)
     sock.ev.on('groups.update', async (updates) => {
-        for (const update of updates) {
-            if (update.id) {
-                // Invalidate cache to force refresh
-                invalidateGroup(update.id);
-                logger.info(`Group cache invalidated: ${update.id}`);
+        try {
+            for (const update of updates) {
+                if (update.id) {
+                    // Invalidate cache to force refresh
+                    invalidateGroup(update.id);
+                    logger.info(`Group cache invalidated: ${update.id}`);
+                }
             }
+        } catch (error) {
+            logger.error('Error in groups.update handler:', error);
         }
     });
 

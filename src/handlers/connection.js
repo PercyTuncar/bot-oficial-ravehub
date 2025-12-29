@@ -135,20 +135,30 @@ async function startBot() {
                                     if (participant) dmTarget = participant.id;
                                 }
 
-                                logger.info(`Sending V4 Invite to ${dmTarget}...`);
+                                if (dmTarget.endsWith('@lid')) {
+                                    logger.warn(`Skipping Invite DM for ${dmTarget} (Cannot resolve LID).`);
+                                } else {
+                                    logger.info(`Sending V4 Invite to ${dmTarget}...`);
 
-                                // Send V4 Invite Card
-                                await sock.sendMessage(dmTarget, {
-                                    groupInvite: {
-                                        groupJid: ban.groupId,
-                                        groupName: groupMetadata?.subject || 'Grupo sin nombre',
-                                        inviteCode: code,
-                                        inviteExpiration: Date.now() + 86400000, // 24 hours
-                                        caption: `🔓 *TU CASTIGO HA TERMINADO*\n\nHola, no pude agregarte automáticamente (Privacidad).\nUsa esta invitación especial para volver.`
-                                    }
-                                });
+                                    // Send V4 Invite Card with Timeout
+                                    const sendPromise = sock.sendMessage(dmTarget, {
+                                        groupInvite: {
+                                            groupJid: ban.groupId,
+                                            groupName: groupMetadata?.subject || 'Grupo sin nombre',
+                                            inviteCode: code,
+                                            inviteExpiration: Date.now() + 86400000, // 24 hours
+                                            caption: `🔓 *TU CASTIGO HA TERMINADO*\n\nHola, no pude agregarte automáticamente (Privacidad).\nUsa esta invitación especial para volver.`
+                                        }
+                                    });
 
-                                logger.info(`Sent V4 Invite to ${dmTarget}`);
+                                    // Timeout wrapper (5 seconds)
+                                    const timeoutPromise = new Promise((_, reject) =>
+                                        setTimeout(() => reject(new Error('SendMessage Timeout')), 5000)
+                                    );
+
+                                    await Promise.race([sendPromise, timeoutPromise]);
+                                    logger.info(`Sent V4 Invite to ${dmTarget}`);
+                                }
 
                             } catch (dmError) {
                                 logger.error(`Failed to send invite DM: ${dmError.message}`);

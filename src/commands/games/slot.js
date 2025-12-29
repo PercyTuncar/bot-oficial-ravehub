@@ -69,7 +69,7 @@ module.exports = {
 ━━━━━━━━━━━━━━━━━━━━━━
 GIRANDO...`;
 
-            const sentMsg = await sock.sendMessage(targetJid, { text: initialText }, { quoted: msg });
+            const sentMsg = await sock.sendMessage(targetJid, { text: initialText });
 
             const [s1, s2, s3] = getWeightedSlotResult();
 

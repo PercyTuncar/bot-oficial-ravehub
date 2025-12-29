@@ -25,7 +25,6 @@ function cleanupProcessedMessages() {
 const { extractMessageText, extractMentions } = require('../utils/textUtils');
 
 async function handleIncomingMessage(sock, msg) {
-    // console.log('DEBUG: Message received:', msg.key.remoteJid, msg.key.id); // Validating reception
     const handlerStart = Date.now();
 
     try {

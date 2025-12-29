@@ -4,10 +4,6 @@ const { setCachedGroup, invalidateGroup, getGroupMetadataCached } = require('../
 const logger = require('../utils/logger');
 const fs = require('fs');
 const path = require('path');
-const NodeCache = require('node-cache'); // Import node-cache
-
-// Cache for message retries to prevent loops
-const msgRetryCounterCache = new NodeCache();
 
 // Helper function to delete auth folder if needed
 function clearAuth() {
@@ -31,7 +27,6 @@ async function startBot() {
         ...BAILEYS_CONFIG,
         version,
         auth: state,
-        msgRetryCounterCache, // Enable retry cache
         // Cached group metadata for performance
         cachedGroupMetadata: async (jid) => {
             return await getGroupMetadataCached(sock, jid);
@@ -90,85 +85,40 @@ async function startBot() {
                         logger.info(`Checking expired bans: found ${expiredBans.length}`);
                     }
 
-                    for (let ban of expiredBans) {
+                    for (const ban of expiredBans) {
+                        logger.info(`Processing expired ban for ${ban.userId} in ${ban.groupId}`);
+
                         try {
-                            // --- LID FIX: Resolve to Phone JID if needed ---
-                            let targetJid = ban.userId;
-                            if (targetJid.endsWith('@lid')) {
-                                logger.info(`Attempting to resolve LID ${targetJid} to JID...`);
-                                const groupMetadata = await getGroupMetadataCached(sock, ban.groupId);
-                                if (groupMetadata) {
-                                    const participant = groupMetadata.participants.find(p => p.lid === targetJid);
-                                    if (participant && participant.id) {
-                                        targetJid = participant.id;
-                                        logger.info(`Resolved LID ${ban.userId} to ${targetJid}`);
-                                    }
-                                }
-                            }
-                            // -----------------------------------------------
-
-                            logger.info(`Processing expired ban for ${targetJid} in ${ban.groupId}`);
-
                             // Try to add user directly
-                            await sock.groupParticipantsUpdate(ban.groupId, [targetJid], 'add');
+                            await sock.groupParticipantsUpdate(ban.groupId, [ban.userId], 'add');
 
                             // Send welcome back message
                             await sock.sendMessage(ban.groupId, {
-                                text: `🤡 *¿OTRA VEZ TÚ?*\n\nMira quién volvió...*\n\n 🕊️ Bienvenido de vuelta @${targetJid.split('@')[0]}.\nTu tiempo de castigo ha terminado. Pórtate bien esta vez.`,
-                                mentions: [targetJid]
+                                text: `🤡 *¿OTRA VEZ TÚ?*\n\nMira quién volvió...*\n\n 🕊️ Bienvenido de vuelta @${ban.userId.split('@')[0]}.\nTu tiempo de castigo ha terminado. Pórtate bien esta vez.`,
+                                mentions: [ban.userId]
                             });
 
-                            logger.info(`Successfully auto-added ${targetJid} to ${ban.groupId}`);
+                            logger.info(`Successfully auto-added ${ban.userId} to ${ban.groupId}`);
 
                         } catch (addError) {
-                            logger.warn(`Failed to auto-add (Privacy/Perms): ${addError.message}`);
+                            logger.warn(`Failed to auto-add ${ban.userId} (Privacy/Perms): ${addError.message}`);
 
                             try {
-                                // If add failed (privacy or pushed out), send OFFICIAL INVITE V4
+                                // If add failed (privacy), send invite link via DM
                                 const code = await sock.groupInviteCode(ban.groupId);
-                                const groupMetadata = await getGroupMetadataCached(sock, ban.groupId); // Use cached metadata helper
+                                const inviteLink = `https://chat.whatsapp.com/${code}`;
 
-                                // Resolve target again for DM if needed (should be same targetJid)
-                                let dmTarget = ban.userId;
-                                if (dmTarget.endsWith('@lid')) {
-                                    const participant = groupMetadata?.participants?.find(p => p.lid === dmTarget);
-                                    if (participant) dmTarget = participant.id;
-                                }
-
-                                if (dmTarget.endsWith('@lid')) {
-                                    logger.warn(`Skipping Invite DM for ${dmTarget} (Cannot resolve LID).`);
-                                } else {
-                                    logger.info(`Sending V4 Invite to ${dmTarget}...`);
-
-                                    // Send V4 Invite Card with Timeout
-                                    const sendPromise = sock.sendMessage(dmTarget, {
-                                        groupInvite: {
-                                            groupJid: ban.groupId,
-                                            groupName: groupMetadata?.subject || 'Grupo sin nombre',
-                                            inviteCode: code,
-                                            inviteExpiration: Date.now() + 86400000, // 24 hours
-                                            caption: `🔓 *TU CASTIGO HA TERMINADO*\n\nHola, no pude agregarte automáticamente (Privacidad).\nUsa esta invitación especial para volver.`
-                                        }
-                                    });
-
-                                    // Timeout wrapper (5 seconds)
-                                    const timeoutPromise = new Promise((_, reject) =>
-                                        setTimeout(() => reject(new Error('SendMessage Timeout')), 5000)
-                                    );
-
-                                    await Promise.race([sendPromise, timeoutPromise]);
-                                    logger.info(`Sent V4 Invite to ${dmTarget}`);
-                                }
-
+                                await sock.sendMessage(ban.userId, {
+                                    text: `🔓 *TU CASTIGO HA TERMINADO*\n\nHola, ya puedes volver al grupo.\n\n⚠️ No pude agregarte automáticamente debido a tu configuración de privacidad.\n\n🔗 Únete aquí: ${inviteLink}`
+                                });
                             } catch (dmError) {
-                                logger.error(`Failed to send invite DM: ${dmError.message}`);
+                                logger.error(`Failed to send invite DM to ${ban.userId}: ${dmError.message}`);
                             }
-                        } finally {
-                            // Always remove the temp ban record after processing attempt
-                            if (ban.id) {
-                                await removeTempBan(ban.id);
-                                logger.info(`Removed temp ban record ${ban.id}`);
-                            }
+                        }
+
+                        // Always remove the temp ban record after processing attempt
+                        if (ban.id) {
+                            await removeTempBan(ban.id);
                         }
                     }
                 } catch (err) {

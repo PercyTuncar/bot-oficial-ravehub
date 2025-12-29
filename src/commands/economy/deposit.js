@@ -53,10 +53,17 @@ module.exports = {
 
         } catch (error) {
             await reactError(sock, targetJid, reactionKey);
+            // Don't log user input errors as system errors
+            if (error.message === "Cantidad inválida" || error.message === "No tienes suficiente efectivo") {
+                // Using warn or info for expected user errors
+                // Assuming logger is available or we just suppress the console.error
+            } else {
+                console.error('Error in deposit:', error);
+            }
+
             if (error.message) {
                 await sock.sendMessage(targetJid, { text: `❌ ${error.message}` }, { quoted: msg });
             }
-            console.error('Error in deposit:', error);
         }
     }
 };

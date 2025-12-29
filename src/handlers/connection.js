@@ -53,14 +53,24 @@ async function startBot() {
             if (tempBanInterval) clearInterval(tempBanInterval);
 
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-            logger.warn(`Connection closed due to ${lastDisconnect?.error}, reconnecting: ${shouldReconnect}`);
-
-            if (shouldReconnect) {
-                startBot();
+            if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+                logger.warn(`Connection closed due to ${lastDisconnect?.error}, reconnecting...`);
+                // Let PM2 handle the restart by exiting with success code (or failure if you prefer)
+                // We use code 0 or 1. If we want PM2 to restart immediately according to its policy, exiting is best.
+                // However, we must ensure we don't loop too fast if there's a permanent error.
+                process.exit(0);
             } else {
                 logger.error('Logged out. Please delete auth_info and scan QR again.');
+                // For logged out, we might want to stop or just exit. 
+                // If we exit, it loops unless we delete credentials.
+                // We'll exit and let the robust startup handle it or stay down if configured.
+                // Better to just delete the session here if we are sure.
+
+                // Optional: automatically clear auth
+                // const path = require('path');
+                // const fs = require('fs');
+                // fs.rmSync(path.join(process.cwd(), 'auth_info'), { recursive: true, force: true });
+                process.exit(1);
             }
         } else if (connection === 'open') {
             const { initSilenceCache } = require('../services/silenceService');

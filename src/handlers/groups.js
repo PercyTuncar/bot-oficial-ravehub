@@ -9,10 +9,20 @@ async function handleGroupUpdate(sock, update) {
         const { id, participants, action } = update;
         // action: 'add', 'remove', 'promote', 'demote'
 
+        console.log(`[GROUP UPDATE] Action: ${action} | Group: ${id} | Participants: ${JSON.stringify(participants)}`);
+
         // 1. Check if group is active in DB
         const group = await getGroup(id);
-        if (!group) return;
-        if (!group.active) return;
+        if (!group) {
+            console.log(`[GROUP UPDATE] Group ${id} not found in database`);
+            return;
+        }
+        if (!group.active) {
+            console.log(`[GROUP UPDATE] Group ${id} is not active`);
+            return;
+        }
+
+        console.log(`[GROUP UPDATE] Group settings: ${JSON.stringify(group.settings)}`);
 
         // 2. Get fresh group metadata for participant count
         const groupMetadata = await getGroupMetadataCached(sock, id);
@@ -20,6 +30,7 @@ async function handleGroupUpdate(sock, update) {
 
         // 3. Welcome (add)
         if (action === 'add') {
+            console.log(`[WELCOME] Welcome enabled: ${group.settings?.welcome?.enabled}`);
             if (group.settings?.welcome?.enabled) {
                 const rawMessage = group.settings.welcome.message || '¡Bienvenido {user} a {group}! 🎉';
                 const imageUrl = detectImageUrl(rawMessage) || group.settings.welcome.imageUrl;

@@ -74,7 +74,7 @@ module.exports = {
 
 ━━━━━━━━━━━━━━━━━━━━━━
 📛 Nombre: ${globalUser?.name || member.name || 'Unknown'}
-📞 Teléfono: +${targetUserId.split('@')[0]}
+📞 Teléfono: +${targetUserId.split('@')[0].split(':')[0]}
 🎂 Cumpleaños: ${birthdayText}
 ━━━━━━━━━━━━━━━━━━━━━━
 

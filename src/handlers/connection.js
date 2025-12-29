@@ -53,6 +53,7 @@ async function startBot() {
             if (tempBanInterval) clearInterval(tempBanInterval);
 
             const statusCode = lastDisconnect?.error?.output?.statusCode;
+            logger.warn(`Connection closed. Status code: ${statusCode || 'unknown'}`);
 
             // Only exit for loggedOut (401) - requires new QR scan
             if (statusCode === DisconnectReason.loggedOut) {
@@ -60,12 +61,10 @@ async function startBot() {
                 process.exit(1);
             }
 
-            // For ALL other disconnects (including restartRequired, connectionClosed, etc.)
-            // reconnect internally WITHOUT exiting the process
-            logger.warn(`Connection closed (code: ${statusCode || 'unknown'}). Reconnecting in 5 seconds...`);
-            setTimeout(() => {
-                startBot();
-            }, 5000);
+            // For ALL other disconnects, exit gracefully and let PM2 restart
+            // This is cleaner than internal reconnection which can create socket conflicts
+            logger.warn('Exiting for PM2 restart...');
+            process.exit(0);
         } else if (connection === 'open') {
             const { initSilenceCache } = require('../services/silenceService');
             await initSilenceCache();

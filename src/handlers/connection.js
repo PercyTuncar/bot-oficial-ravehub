@@ -51,6 +51,8 @@ async function startBot() {
         if (connection === 'close') {
             if (keepAliveInterval) clearInterval(keepAliveInterval);
             if (tempBanInterval) clearInterval(tempBanInterval);
+            // Watchdog is cleared implicitly because the process exits, but good practice if we used internal reconnect
+
 
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             logger.warn(`Connection closed. Status code: ${statusCode || 'unknown'}`);
@@ -73,9 +75,27 @@ async function startBot() {
 
             // LEVANTER-STYLE STABILITY: Keep-Alive Interval
             // Sends a presence update every 30s to prevent silent timeouts
+            // LEVANTER-STYLE STABILITY: Keep-Alive Interval & Watchdog
+            // Sends a presence update every 30s to prevent silent timeouts
+            let lastHeartbeat = Date.now();
+
             keepAliveInterval = setInterval(async () => {
-                await sock.sendPresenceUpdate('available').catch(() => { });
+                try {
+                    await sock.sendPresenceUpdate('available');
+                    lastHeartbeat = Date.now(); // Update timestamp on success
+                } catch (err) {
+                    logger.warn('Failed to send presence update (heartbeat missed)');
+                }
             }, 30000);
+
+            // Watchdog: Force restart if heartbeat is lost for 90 seconds (3 missed beats)
+            const watchdogInterval = setInterval(() => {
+                const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
+                if (timeSinceLastHeartbeat > 90000) {
+                    logger.error(`Watchdog Error: No heartbeat for ${Math.round(timeSinceLastHeartbeat / 1000)}s. Force restarting...`);
+                    process.exit(1);
+                }
+            }, 10000); // Check every 10 seconds
 
             // TEMP BAN CHECKER CRON JOB
             tempBanInterval = setInterval(async () => {

@@ -74,24 +74,24 @@ async function startBot() {
             logger.info('Bot connected successfully!');
 
             // LEVANTER-STYLE STABILITY: Keep-Alive Interval
-            // Sends a presence update every 30s to prevent silent timeouts
-            // LEVANTER-STYLE STABILITY: Keep-Alive Interval & Watchdog
-            // Sends a presence update every 30s to prevent silent timeouts
+            // Sends a message to self every 45s to test full encryption pipeline
             let lastHeartbeat = Date.now();
+            const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
 
             keepAliveInterval = setInterval(async () => {
                 try {
-                    await sock.sendPresenceUpdate('available');
+                    // Send an invisible/empty message or a dot to self to verify encryption
+                    await sock.sendMessage(botJid, { text: '.' }, { ephemeralExpiration: 100 });
                     lastHeartbeat = Date.now(); // Update timestamp on success
                 } catch (err) {
-                    logger.warn('Failed to send presence update (heartbeat missed)');
+                    logger.warn(`Heartbeat failed: ${err.message}`);
                 }
-            }, 30000);
+            }, 45000); // Check every 45 seconds
 
-            // Watchdog: Force restart if heartbeat is lost for 90 seconds (3 missed beats)
+            // Watchdog: Force restart if heartbeat is lost for 120 seconds
             const watchdogInterval = setInterval(() => {
                 const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
-                if (timeSinceLastHeartbeat > 90000) {
+                if (timeSinceLastHeartbeat > 120000) {
                     logger.error(`Watchdog Error: No heartbeat for ${Math.round(timeSinceLastHeartbeat / 1000)}s. Force restarting...`);
                     process.exit(1);
                 }

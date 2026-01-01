@@ -55,20 +55,52 @@ module.exports = {
 
             // Si el usuario no existe en la DB del grupo, crearlo (aunque el getMember ya debería manejar esto si entra al grupo, pero por seguridad)
             // Aquí asumimos que existe o que updateMember manejará el caso simple, pero idealmente validamos.
-            // Para mantenerlo simple según la "Regla de Oro":
 
             const currentBank = member ? (member.bank || 0) : 0;
-            const newBank = currentBank + amount;
+            const currentDebt = member ? (member.debt || 0) : 0;
+            let newBank = currentBank;
+            let newDebt = currentDebt;
+            let paidDebt = 0;
+            let depositAmount = amount;
+
+            // Lógica de Deuda Automática
+            if (currentDebt > 0) {
+                if (amount >= currentDebt) {
+                    // Paga toda la deuda
+                    paidDebt = currentDebt;
+                    depositAmount = amount - currentDebt;
+                    newDebt = 0;
+                } else {
+                    // Paga parte de la deuda
+                    paidDebt = amount;
+                    depositAmount = 0;
+                    newDebt = currentDebt - amount;
+                }
+            }
+
+            newBank += depositAmount;
 
             const memberName = member?.name || "Beneficiario";
 
             // Update DB
-            await updateMember(groupId, targetUserId, { bank: parseFloat(newBank.toFixed(2)) });
+            await updateMember(groupId, targetUserId, {
+                bank: parseFloat(newBank.toFixed(2)),
+                debt: parseFloat(newDebt.toFixed(2))
+            });
 
             // 4. Generar Ticket
             const transactionId = `TXN-${Date.now().toString().slice(-6)}`;
             const date = new Date().toLocaleDateString();
             const time = new Date().toLocaleTimeString();
+
+            let ticketDetails = "";
+            if (paidDebt > 0) {
+                ticketDetails += `💸 *DEUDA PAGADA:* $${paidDebt.toFixed(2)}\n`;
+                if (newDebt > 0) ticketDetails += `⚠️ *DEUDA RESTANTE:* $${newDebt.toFixed(2)}\n`;
+            }
+            if (depositAmount > 0 || paidDebt === 0) {
+                ticketDetails += `💵 *DEPOSITADO BANCO:* $${depositAmount.toFixed(2)}\n`;
+            }
 
             const ticket = `
 🧾 *COMPROBANTE DE TRANSACCIÓN* 🧾
@@ -77,9 +109,8 @@ module.exports = {
 📅 *Fecha:* ${date} - ${time}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 👤 *Beneficiario:* @${targetUserId.split('@')[0]}
-🏦 *Concepto:* Recarga de Saldo
-
-💵 *MONTO RECARGADO:* $${amount.toFixed(2)}
+🏦 *Concepto:* Admin Inyección
+${ticketDetails}
 💰 *NUEVO SALDO BANCO:* $${newBank.toFixed(2)}
 
 ✅ *ESTADO:* APROBADO
@@ -88,7 +119,7 @@ module.exports = {
 `;
 
             await sock.sendMessage(targetJid, {
-                text: ticket,
+                text: ticket.trim(),
                 mentions: [targetUserId]
             }, { quoted: msg });
 

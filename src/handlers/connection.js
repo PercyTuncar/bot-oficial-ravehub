@@ -305,6 +305,9 @@ async function startBot() {
                 try {
                     await delay(2000); // Wait for full initialization
 
+                    const botNumber = sock.user.id.split(':')[0];
+                    const botJid = `${botNumber}@s.whatsapp.net`;
+
                     const uptime = process.uptime();
                     const hours = Math.floor(uptime / 3600);
                     const minutes = Math.floor((uptime % 3600) / 60);

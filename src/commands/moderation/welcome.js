@@ -6,6 +6,8 @@ module.exports = {
     name: 'welcome',
     category: 'moderation',
     description: 'Configura las bienvenidas del grupo',
+    usage: '.welcome <on|off|message> [texto]',
+    examples: ['.welcome on', '.welcome off', '.welcome message ¡Bienvenido {user} a {group}! Eres el miembro #{count}'],
     requiredLevel: LEVELS.ADMIN,
     async execute(sock, msg, args, { isGroup, text, group: groupId }) {
         if (!isGroup) return;

@@ -7,6 +7,8 @@ module.exports = {
     name: 'withdraw',
     aliases: ['retirar', 'sacar'],
     description: 'Retira dinero del banco a efectivo',
+    usage: '.withdraw <cantidad|all>',
+    examples: ['.withdraw 100', '.sacar 500', '.retirar all'],
     requiredLevel: LEVELS.USER,
     async execute(sock, msg, args, { user: userId, groupId, isGroup }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);

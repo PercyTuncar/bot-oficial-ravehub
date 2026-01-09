@@ -6,6 +6,8 @@ module.exports = {
     name: 'addmoney',
     aliases: ['inject', 'dar-dinero'],
     description: 'Inyecta saldo al banco de un usuario (Solo Dueño)',
+    usage: '.addmoney <@usuario> <cantidad>',
+    examples: ['.addmoney @usuario 1000', '.addmoney @admin 500.50'],
     requiredLevel: LEVELS.OWNER, // Exclusivo Owner
     async execute(sock, msg, args, { groupId, isGroup }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);

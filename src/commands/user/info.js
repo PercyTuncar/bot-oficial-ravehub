@@ -7,6 +7,8 @@ module.exports = {
     name: 'info',
     aliases: ['perfil', 'ver'],
     description: 'Muestra el perfil de un usuario mencionado en este grupo',
+    usage: '.info <@usuario>',
+    examples: ['.info @usuario', '.perfil @admin'],
     requiredLevel: LEVELS.USER,
     async execute(sock, msg, args, { groupId, isGroup }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);

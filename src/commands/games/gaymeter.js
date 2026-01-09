@@ -6,6 +6,8 @@ module.exports = {
     name: 'gaymeter',
     aliases: ['gay', 'homo', 'lgbt'],
     description: 'Calcula el porcentaje de homosexualidad de un usuario (Diversión)',
+    usage: '.gaymeter [@usuario]',
+    examples: ['.gaymeter', '.gaymeter @usuario', '.gay @amigo'],
     requiredLevel: LEVELS.USER,
     async execute(sock, msg, args, { groupId, isGroup, user, groupMetadata }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);
@@ -174,8 +176,15 @@ _${emoji} ${diagnosis}_
             // 7. Audio Easter Egg (>= 50%)
             if (percentage >= 50) {
                 const path = require('path');
-                // Send as true PTT (Voice Note) - File is .opus
-                const audioPath = path.join(__dirname, '../../media/WhatsAppAudioGay.opus');
+                // Send as true PTT (Voice Note) - File is .ogg
+                const audioPath = path.join(__dirname, '../../media/WhatsAppAudioGay.ogg');
+
+                // ANTI-BAN: Simulate recording before sending audio
+                await delay(1500 + Math.random() * 1500); // 1.5-3s delay
+                try {
+                    await sock.sendPresenceUpdate('recording', targetJid);
+                } catch (e) {}
+                await delay(1000 + Math.random() * 1000); // 1-2s delay
 
                 await sock.sendMessage(targetJid, {
                     audio: { url: audioPath },

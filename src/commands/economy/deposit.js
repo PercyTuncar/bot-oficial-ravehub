@@ -7,6 +7,8 @@ module.exports = {
     name: 'deposit',
     aliases: ['depositar', 'dep'],
     description: 'Deposita dinero al banco (protegido de robos)',
+    usage: '.deposit <cantidad|all>',
+    examples: ['.deposit 100', '.dep 500', '.depositar all'],
     requiredLevel: LEVELS.USER,
     async execute(sock, msg, args, { user: userId, groupId, isGroup }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);

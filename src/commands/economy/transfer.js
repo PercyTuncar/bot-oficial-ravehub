@@ -6,6 +6,8 @@ module.exports = {
     name: 'transfer',
     aliases: ['pay', 'pagar', 'transferir', 'dar'],
     description: 'Envía dinero de tu banco a otro usuario',
+    usage: '.transfer <@usuario> <cantidad>',
+    examples: ['.transfer @usuario 100', '.pay @amigo 500', '.pagar @admin 1000'],
     requiredLevel: LEVELS.USER,
     async execute(sock, msg, args, { user: senderId, groupId, isGroup }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);

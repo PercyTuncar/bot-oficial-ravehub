@@ -1,3 +1,14 @@
+/**
+ * RaveHub WhatsApp Bot - Message Handler
+ * 
+ * ANTI-BAN COMPLIANT:
+ * 1. Random delays (jitter) before responses
+ * 2. Presence simulation (typing indicator)
+ * 3. Self-loop protection
+ * 4. Contact interaction tracking
+ * 5. Rate limiting
+ */
+
 const { getCommand } = require('../commands');
 const {
     getUser, createUser, updateUser,
@@ -13,8 +24,12 @@ require('dotenv').config();
 
 const PREFIX = process.env.BOT_PREFIX || '.';
 
-// Message deduplication cache
+// ===== ANTI-BAN: Message deduplication cache =====
 const processedMessages = new Set();
+
+// ===== ANTI-BAN: Contact interaction tracking =====
+// Tracks JIDs that have messaged the bot first (never initiate to unknown contacts)
+const knownContacts = new Set();
 
 function cleanupProcessedMessages() {
     if (processedMessages.size > 1000) {
@@ -22,7 +37,73 @@ function cleanupProcessedMessages() {
     }
 }
 
+// Cleanup known contacts periodically (keep last 10000)
+function cleanupKnownContacts() {
+    if (knownContacts.size > 10000) {
+        const entries = Array.from(knownContacts);
+        knownContacts.clear();
+        // Keep last 5000
+        entries.slice(-5000).forEach(jid => knownContacts.add(jid));
+    }
+}
+
 const { extractMessageText, extractMentions } = require('../utils/textUtils');
+
+/**
+ * ANTI-BAN: Random delay with jitter
+ * Simulates human typing time
+ */
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * ANTI-BAN: Get random delay between min and max ms
+ */
+function getRandomDelay(min = 1000, max = 3000) {
+    return Math.random() * (max - min) + min;
+}
+
+/**
+ * ANTI-BAN: Send presence update before responding
+ * @param {object} sock - Baileys socket
+ * @param {string} jid - Target JID
+ * @param {string} presence - Presence type ('composing', 'recording', 'available')
+ */
+async function simulateTyping(sock, jid, presence = 'composing') {
+    try {
+        await sock.sendPresenceUpdate(presence, jid);
+    } catch (e) {
+        // Ignore presence errors
+    }
+}
+
+/**
+ * ANTI-BAN: Safe message sender with delay and presence
+ * @param {object} sock - Baileys socket
+ * @param {string} jid - Target JID
+ * @param {object} content - Message content
+ * @param {object} options - Send options
+ */
+async function safeSendMessage(sock, jid, content, options = {}) {
+    try {
+        // 1. Send typing indicator
+        await simulateTyping(sock, jid, 'composing');
+        
+        // 2. Random delay (1-3 seconds) to simulate human typing
+        await delay(getRandomDelay(1000, 2500));
+        
+        // 3. Stop typing
+        await simulateTyping(sock, jid, 'paused');
+        
+        // 4. Small delay before sending
+        await delay(getRandomDelay(200, 500));
+        
+        // 5. Send message
+        return await sock.sendMessage(jid, content, options);
+    } catch (error) {
+        logger.error(`safeSendMessage error: ${error.message}`);
+        throw error;
+    }
+}
 
 async function handleIncomingMessage(sock, msg) {
     const handlerStart = Date.now();
@@ -30,24 +111,19 @@ async function handleIncomingMessage(sock, msg) {
     try {
         if (!msg.message) return;
 
-        // --- EXTENSIVE DEBUGGING ---
-        console.log('--- NEW MESSAGE RECEIVED ---');
-        console.log(JSON.stringify(msg, null, 2));
-
-        // --- DEDUPLICATION CHECK ---
+        // ===== DEDUPLICATION CHECK =====
         const msgId = msg.key.id;
         if (processedMessages.has(msgId)) {
-            console.log(`[DEBUG] Duplicate message ignored: ${msgId}`);
             return;
         }
         processedMessages.add(msgId);
         cleanupProcessedMessages();
 
-        // --- Extract text ---
+        // ===== Extract text =====
         const text = extractMessageText(msg).trim();
-        console.log(`[DEBUG] Extracted text: "${text}" from ${msg.key.remoteJid}`);
 
-        // --- Self-Message Handling ---
+        // ===== ANTI-BAN: Self-loop protection =====
+        // Never respond to own messages unless it's a command
         if (msg.key.fromMe && !text.startsWith(PREFIX)) {
             return;
         }
@@ -55,62 +131,59 @@ async function handleIncomingMessage(sock, msg) {
         const remoteJid = msg.key.remoteJid;
         const isGroup = remoteJid.endsWith('@g.us');
 
+        // Skip status broadcasts
         if (remoteJid === 'status@broadcast') return;
 
         const userId = msg.key.participant || remoteJid;
         const groupId = isGroup ? remoteJid : null;
 
-        // --- Rate Limit Check ---
+        // ===== ANTI-BAN: Track known contacts =====
+        // Only respond to contacts that have messaged first
+        if (!isGroup && !msg.key.fromMe) {
+            knownContacts.add(userId);
+        }
+        cleanupKnownContacts();
+
+        // ===== Rate Limit Check =====
         const { checkRateLimit } = require('../middleware/ratelimit');
         if (!checkRateLimit(userId)) {
             return;
         }
 
-        // --- Group validation ---
+        // ===== Group validation =====
         let currentGroup = null;
         if (isGroup) {
             currentGroup = await getGroup(remoteJid);
             if (!currentGroup || !currentGroup.active) return;
 
-            // --- SILENCE CHECK (Optimized In-Memory) ---
+            // ===== SILENCE CHECK (In-Memory) =====
             const { isSilenced } = require('../services/silenceService');
             if (isSilenced(remoteJid, userId)) {
-                // Delete message
                 try {
                     await sock.sendMessage(remoteJid, { delete: msg.key });
                 } catch (e) {
-                    // Ignore delete errors (e.g. admin restriction)
+                    // Ignore delete errors
                 }
                 return;
             }
         }
 
-        // --- ANTILINK CHECK ---
-        // currentGroup loaded check
-        if (isGroup) {
-            console.log(`[DEBUG] Processing group message for: ${remoteJid}`);
-        }
-
-        // --- ANTILINK CHECK ---
+        // ===== ANTILINK CHECK =====
         const { checkAntilink } = require('../middleware/antilink');
-        console.log('[DEBUG] Checking Antilink...');
         if (isGroup && await checkAntilink(sock, msg, text, currentGroup, userId, isGroup)) {
-            console.log('[DEBUG] Message blocked by Antilink');
-            return; // Message deleted due to antilink
+            return;
         }
 
-        // --- ANTIWORDS CHECK ---
+        // ===== ANTIWORDS CHECK =====
         const { checkAntiwords } = require('../middleware/antiwords');
-        console.log('[DEBUG] Checking Antiwords...');
         if (isGroup && await checkAntiwords(sock, msg, text, currentGroup, userId, isGroup)) {
-            console.log('[DEBUG] Message blocked by Antiwords');
-            return; // Message deleted due to antiwords
+            return;
         }
 
-        // --- FAST PATH: Command check ---
+        // ===== COMMAND DETECTION =====
         const isCommand = text.startsWith(PREFIX);
 
-        // --- COMMAND EXECUTION ---
+        // ===== COMMAND EXECUTION =====
         if (isCommand) {
             const args = text.slice(PREFIX.length).trim().split(/ +/);
             const commandName = args.shift().toLowerCase();
@@ -125,29 +198,36 @@ async function handleIncomingMessage(sock, msg) {
                 const isPremium = premiumList.includes(userId);
                 const userLevel = await getPermissionLevel(msg.key, groupMetadata, isPremium);
 
-                console.log(`DEBUG: Command '${commandName}' | User: ${userId} | Level: ${userLevel}/${command.requiredLevel} | Time: ${Date.now() - handlerStart}ms`);
+                logger.debug(`Command '${commandName}' | User: ${userId} | Level: ${userLevel}/${command.requiredLevel}`);
 
                 if (command.requiredLevel > userLevel) {
-                    await sock.sendMessage(remoteJid, { text: '❌ No tienes permiso para este comando.' }, { quoted: msg });
+                    // ANTI-BAN: Use safe sender with delay
+                    await safeSendMessage(sock, remoteJid, { 
+                        text: '❌ No tienes permiso para este comando.' 
+                    }, { quoted: msg });
                     return;
                 }
 
-                // Execute command with context
+                // Execute command with enhanced context
                 await command.execute(sock, msg, args, {
                     user: userId,
                     group: groupId,
                     groupId: groupId,
                     text,
                     isGroup,
-                    groupMetadata
+                    groupMetadata,
+                    // Provide safe sender to commands
+                    safeSend: (content, opts) => safeSendMessage(sock, remoteJid, content, { ...opts, quoted: msg }),
+                    simulateTyping: () => simulateTyping(sock, remoteJid),
+                    delay
                 });
 
-                console.log(`DEBUG: Command '${commandName}' completed in ${Date.now() - handlerStart}ms`);
+                logger.debug(`Command '${commandName}' completed in ${Date.now() - handlerStart}ms`);
                 return;
             }
         }
 
-        // --- NON-COMMAND MESSAGES: Process stats/economy in background (only in groups) ---
+        // ===== NON-COMMAND MESSAGES: Process stats/economy in background =====
         if (isGroup) {
             processBackgroundTasks(groupId, userId, text, msg, sock).catch(err => {
                 logger.error('Background task error:', err);
@@ -155,7 +235,6 @@ async function handleIncomingMessage(sock, msg) {
         }
 
     } catch (error) {
-        console.error('[CRITICAL ERROR] Error handling message:', error);
         logger.error('Error handling message:', error);
     }
 }
@@ -205,6 +284,11 @@ async function processBackgroundTasks(groupId, userId, text, msg, sock) {
         const economyResult = await processMessageEconomy(groupId, userId, member);
 
         if (economyResult.payout) {
+            // ANTI-BAN: Add delay before economy notifications
+            await delay(getRandomDelay(1500, 3000));
+            await simulateTyping(sock, groupId);
+            await delay(getRandomDelay(800, 1500));
+            
             await sock.sendMessage(groupId, {
                 text: `💰 *PAGO REALIZADO*\nUsuario: @${userId.split('@')[0]}\nMonto: $${economyResult.amount.toFixed(2)} 💵\nModalidad: Efectivo\n\n💡 Usa .deposit ${economyResult.amount.toFixed(2)} para guardarlo.`,
                 mentions: [userId]
@@ -212,6 +296,10 @@ async function processBackgroundTasks(groupId, userId, text, msg, sock) {
             member.wallet = (member.wallet || 0) + economyResult.amount;
             member.pending = 0;
         } else if (economyResult.paidDebt && economyResult.cleared) {
+            await delay(getRandomDelay(1500, 3000));
+            await simulateTyping(sock, groupId);
+            await delay(getRandomDelay(800, 1500));
+            
             await sock.sendMessage(groupId, {
                 text: `🧾 *DEUDA PAGADA*\nSe han descontado $${economyResult.totalPayout.toFixed(2)} para pagar tu deuda.\n✅ Ahora estás libre de deudas.`
             }, { quoted: msg });
@@ -229,6 +317,11 @@ async function processBackgroundTasks(groupId, userId, text, msg, sock) {
             const emoji = lvlChange.level > member.level ? '🎉' : '⚠️';
             const action = lvlChange.level > member.level ? 'SUBISTE' : 'BAJASTE';
 
+            // ANTI-BAN: Add delay before level notifications
+            await delay(getRandomDelay(2000, 4000));
+            await simulateTyping(sock, groupId);
+            await delay(getRandomDelay(1000, 2000));
+
             await sock.sendMessage(groupId, {
                 text: `${emoji} *¡${action} DE NIVEL!*\n\n@${userId.split('@')[0]} ${action.toLowerCase()} a NIVEL ${lvlChange.level}\n🎫 ZONA: ${lvlChange.name}\n━━━━━━━━━━━━━━━━━━━━━━\n${lvlChange.desc}`,
                 mentions: [userId]
@@ -240,5 +333,9 @@ async function processBackgroundTasks(groupId, userId, text, msg, sock) {
 }
 
 module.exports = {
-    handleIncomingMessage
+    handleIncomingMessage,
+    safeSendMessage,
+    simulateTyping,
+    delay,
+    getRandomDelay
 };

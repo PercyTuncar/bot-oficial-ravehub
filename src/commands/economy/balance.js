@@ -6,6 +6,8 @@ module.exports = {
     name: 'balance',
     aliases: ['bal', 'billetera', 'wallet', 'bank'],
     description: 'Muestra tu balance o el de otro usuario',
+    usage: '.balance [@usuario]',
+    examples: ['.balance', '.bal @usuario'],
     requiredLevel: LEVELS.USER,
     async execute(sock, msg, args, { user: senderId, groupId, isGroup }) {
         const targetJid = normalizeJidForSend(msg.key.remoteJid, sock, msg.key.fromMe);

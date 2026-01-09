@@ -7,6 +7,8 @@ module.exports = {
     aliases: ['despedida', 'goodbye'],
     category: 'moderation',
     description: 'Configura las despedidas del grupo',
+    usage: '.farewell <on|off|message> [texto]',
+    examples: ['.farewell on', '.farewell off', '.farewell message Adiós {user}, te esperamos de vuelta 👋'],
     requiredLevel: LEVELS.ADMIN,
     async execute(sock, msg, args, { isGroup, text, group: groupId }) {
         if (!isGroup) return;
@@ -38,11 +40,21 @@ module.exports = {
                     return sock.sendMessage(groupId, { text: '❌ Debes escribir el mensaje.' }, { quoted: msg });
                 }
 
+                const urlRegex = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif))/i;
+                const match = message.match(urlRegex);
+                const imageUrl = match ? match[0] : null;
+
                 await updateGroup(groupId, {
-                    'settings.farewell.message': message
+                    'settings.farewell.message': message,
+                    'settings.farewell.imageUrl': imageUrl
                 });
 
-                await sock.sendMessage(groupId, { text: `✅ Mensaje de despedida configurado:\n\n"${message}"` }, { quoted: msg });
+                let previewText = `✅ Mensaje de despedida configurado.\n━━━━━━━━━━━━━━━━━━━━━━\nVista previa:\n\n${message}`;
+                if (imageUrl) {
+                    previewText += `\n\n🖼️ Imagen detectada: ${imageUrl}\n💡 Las despedidas se enviarán como imagen.`;
+                }
+
+                await sock.sendMessage(groupId, { text: previewText }, { quoted: msg });
                 await reactSuccess(sock, groupId, reactionKey);
 
             } else {

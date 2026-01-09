@@ -9,20 +9,20 @@
  * 5. Anti-ban delays and presence simulation
  */
 
-const { 
-    makeWASocket, 
-    useMultiFileAuthState, 
+const {
+    makeWASocket,
+    useMultiFileAuthState,
     DisconnectReason,
     makeCacheableSignalKeyStore,
     isJidGroup,
     Browsers,
     fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
-const { 
-    BAILEYS_CONFIG, 
+const {
+    BAILEYS_CONFIG,
     WA_VERSION_FALLBACK,
-    RECONNECT_REASONS, 
-    LOGOUT_REASONS 
+    RECONNECT_REASONS,
+    LOGOUT_REASONS
 } = require('../config/baileys');
 const { setCachedGroup, invalidateGroup, getGroupMetadataCached } = require('../services/cache');
 const logger = require('../utils/logger');
@@ -34,8 +34,8 @@ const pino = require('pino');
 let sock = null;
 let reconnectAttempts = 0;
 let currentWaVersion = null; // Store current WA version for display
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_BASE_DELAY = 3000; // 3 seconds base
+const MAX_RECONNECT_ATTEMPTS = 15;
+const RECONNECT_BASE_DELAY = 5000; // 5 seconds base
 
 // LID to Phone Number mapping cache
 const lidMapping = new Map();
@@ -99,7 +99,7 @@ function storeLidMapping(lid, phoneJid) {
 async function startBot() {
     try {
         const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-        
+
         // Fetch latest WA version with fallback
         let version;
         try {
@@ -172,7 +172,7 @@ async function startBot() {
                 logger.warn(`Connection closed. Code: ${statusCode || 'unknown'}, Reason: ${errorMessage}`);
 
                 // ===== CRITICAL: Proper disconnect handling =====
-                
+
                 // CASE 1: Logged out (401) - Session invalid, must re-scan QR
                 if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                     logger.error('SESSION LOGGED OUT (401) - Clearing auth and stopping.');
@@ -180,11 +180,18 @@ async function startBot() {
                     process.exit(1); // PM2 will NOT restart due to exit code 1 if configured
                 }
 
-                // CASE 2: Bad session (500) - Corrupted session
-                if (statusCode === DisconnectReason.badSession || statusCode === 500) {
-                    logger.error('BAD SESSION (500) - Clearing auth and stopping.');
-                    clearAuth();
-                    process.exit(1);
+                // CASE 2: Bad session - ONLY clear auth for TRUE bad session
+                // NOTE: Do NOT clear auth for 500 with 'Stream Errored' - those are transient!
+                if (statusCode === DisconnectReason.badSession) {
+                    const isTruelyBadSession = errorMessage.includes('Bad session') ||
+                        errorMessage.includes('invalid session');
+                    if (isTruelyBadSession) {
+                        logger.error('TRUE BAD SESSION - Clearing auth and stopping.');
+                        clearAuth();
+                        process.exit(1);
+                    } else {
+                        logger.warn('Status 500 but not true bad session, treating as transient...');
+                    }
                 }
 
                 // CASE 3: Transient errors - RECONNECT INTERNALLY
@@ -196,21 +203,22 @@ async function startBot() {
                     statusCode === DisconnectReason.timedOut ||
                     statusCode === DisconnectReason.restartRequired ||
                     statusCode === 405 ||
+                    statusCode === 500 || // Stream errors - reconnect, don't clear auth!
                     statusCode === 503 ||
                     statusCode === 408 ||
                     statusCode === 440 ||
                     statusCode === 515
                 ) {
                     reconnectAttempts++;
-                    
+
                     if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
                         logger.error(`Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting for PM2 restart.`);
                         process.exit(0); // Clean exit for PM2 restart
                     }
 
                     const delayMs = getReconnectDelay();
-                    logger.info(`Transient disconnect (${statusCode}). Reconnecting in ${Math.round(delayMs/1000)}s... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-                    
+                    logger.info(`Transient disconnect (${statusCode}). Reconnecting in ${Math.round(delayMs / 1000)}s... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+
                     await delay(delayMs);
                     startBot(); // Internal reconnect - NO process exit
                     return;
@@ -223,41 +231,22 @@ async function startBot() {
             } else if (connection === 'open') {
                 // Reset reconnect counter on successful connection
                 reconnectAttempts = 0;
-                
+
                 // Initialize silence cache
                 const { initSilenceCache } = require('../services/silenceService');
                 await initSilenceCache();
 
                 logger.info('✅ Bot connected successfully!');
 
-                // ===== KEEP-ALIVE HEARTBEAT =====
-                // Sends invisible message to self to verify encryption pipeline
-                let lastHeartbeat = Date.now();
-                const botNumber = sock.user.id.split(':')[0];
-                const botJid = `${botNumber}@s.whatsapp.net`;
-
+                // ===== KEEP-ALIVE (Presence Only - NO messages to self) =====
+                // Research confirms sending messages to self is NOT recommended
                 keepAliveInterval = setInterval(async () => {
                     try {
-                        // Send presence first (anti-detection)
                         await sock.sendPresenceUpdate('available');
-                        
-                        // Then send heartbeat with anti-detection delay
-                        await delay(Math.random() * 1000 + 500);
-                        await sock.sendMessage(botJid, { text: '.' }, { ephemeralExpiration: 60 });
-                        lastHeartbeat = Date.now();
                     } catch (err) {
-                        logger.warn(`Heartbeat failed: ${err.message}`);
+                        logger.warn(`Presence update failed: ${err.message}`);
                     }
-                }, 45000); // Every 45 seconds
-
-                // ===== WATCHDOG - Force restart if heartbeat lost =====
-                watchdogInterval = setInterval(() => {
-                    const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
-                    if (timeSinceLastHeartbeat > 120000) {
-                        logger.error(`WATCHDOG: No heartbeat for ${Math.round(timeSinceLastHeartbeat / 1000)}s. Force restarting...`);
-                        process.exit(1);
-                    }
-                }, 10000);
+                }, 30000); // Every 30 seconds
 
                 // ===== TEMP BAN CHECKER CRON =====
                 tempBanInterval = setInterval(async () => {
@@ -274,11 +263,11 @@ async function startBot() {
                             try {
                                 // Anti-detection delay between operations
                                 await delay(Math.random() * 2000 + 1000);
-                                
+
                                 // Presence before action
                                 await sock.sendPresenceUpdate('composing', ban.groupId);
                                 await delay(500);
-                                
+
                                 await sock.groupParticipantsUpdate(ban.groupId, [ban.userId], 'add');
 
                                 await sock.sendMessage(ban.groupId, {
@@ -315,7 +304,7 @@ async function startBot() {
                 // ===== SEND STARTUP NOTIFICATION =====
                 try {
                     await delay(2000); // Wait for full initialization
-                    
+
                     const uptime = process.uptime();
                     const hours = Math.floor(uptime / 3600);
                     const minutes = Math.floor((uptime % 3600) / 60);
@@ -353,7 +342,7 @@ async function startBot() {
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             // Process all message types (not just 'notify')
             const { handleIncomingMessage } = require('./messages');
-            
+
             for (const msg of messages) {
                 handleIncomingMessage(sock, msg).catch(err => {
                     logger.error('Error in message handler:', err);
@@ -401,16 +390,16 @@ async function startBot() {
 
     } catch (error) {
         logger.error('Fatal error in startBot:', error);
-        
+
         // Wait and retry on startup errors
         reconnectAttempts++;
         if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
             const delayMs = getReconnectDelay();
-            logger.info(`Startup failed. Retrying in ${Math.round(delayMs/1000)}s...`);
+            logger.info(`Startup failed. Retrying in ${Math.round(delayMs / 1000)}s...`);
             await delay(delayMs);
             return startBot();
         }
-        
+
         throw error;
     }
 }
@@ -432,8 +421,8 @@ function resolveJid(jid) {
     return resolveLidToPhone(jid);
 }
 
-module.exports = { 
-    startBot, 
+module.exports = {
+    startBot,
     getSocket,
     resolveJid,
     resolveLidToPhone,
